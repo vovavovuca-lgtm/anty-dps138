@@ -3,30 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Братск Локатор Pro</title>
-    
+    <title>Братск Локатор Исправленный</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    
     <style>
         body, html { margin: 0; padding: 0; height: 100%; background: #222; font-family: sans-serif; overflow: hidden; }
-        #map { height: 100vh; width: 100vw; background: #1a1a1a; } /* Тёмный фон, пока грузится карта */
-
-        /* Интерфейс */
+        #map { height: 100vh; width: 100vw; background: #1a1a1a; }
+        
         #online-tracker { position: absolute; top: 15px; left: 15px; z-index: 1001; background: rgba(0,0,0,0.8); color: #00ff00; padding: 5px 15px; border-radius: 20px; font-size: 13px; border: 1px solid #00ff00; }
         
         #chat-window { position: absolute; top: 15px; right: 15px; width: 260px; z-index: 1001; background: rgba(0,0,0,0.9); border-radius: 12px; display: flex; flex-direction: column; box-shadow: 0 4px 20px rgba(0,0,0,0.5); border: 1px solid #333; }
         #chat-header { padding: 12px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; color: white; font-weight: bold; }
-        #chat-body { height: 250px; display: flex; flex-direction: column; }
-        #chat-messages { flex: 1; overflow-y: auto; padding: 10px; color: #eee; font-size: 13px; border-top: 1px solid #333; }
-        #chat-input { background: #222; border: none; padding: 12px; color: white; border-radius: 0 0 12px 12px; outline: none; border-top: 1px solid #333; }
+        #chat-body { height: 200px; display: flex; flex-direction: column; }
+        #chat-messages { flex: 1; overflow-y: auto; padding: 10px; color: #eee; font-size: 12px; border-top: 1px solid #333; }
         .minimized #chat-body { display: none; }
 
         .controls { position: absolute; bottom: 25px; left: 10px; right: 10px; z-index: 1001; display: flex; gap: 10px; }
-        .btn { flex: 1; border: none; padding: 15px; border-radius: 12px; font-weight: bold; color: white; cursor: pointer; font-size: 14px; }
+        .btn { flex: 1; border: none; padding: 15px; border-radius: 12px; font-weight: bold; color: white; cursor: pointer; font-size: 14px; text-transform: uppercase; }
         .btn-blue { background: #0077ff; }
         .btn-green { background: #28a745; }
 
-        .popup-img { width: 100%; border-radius: 8px; margin-top: 8px; cursor: pointer; }
+        .popup-img { width: 100%; border-radius: 8px; margin-top: 8px; cursor: pointer; border: 1px solid #444; }
+        .del-btn { background: #ff4444; color: white; border: none; padding: 8px; border-radius: 6px; width: 100%; margin-top: 10px; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -40,7 +37,6 @@
         </div>
         <div id="chat-body">
             <div id="chat-messages"></div>
-            <input type="text" id="chat-input" placeholder="Введите сообщение...">
         </div>
     </div>
 
@@ -48,138 +44,144 @@
 
     <div class="controls">
         <button class="btn btn-blue" onclick="getLocation()">📍 ГДЕ Я?</button>
-        <button class="btn btn-green" onclick="addCustomMarker()">🚔 МЕТКА ТУТ</button>
+        <button class="btn btn-green" onclick="addAtUserLocation()">🚔 МЕТКА ТУТ</button>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     
     <script>
-        // ДАННЫЕ ПРОЕКТА
         const SUPABASE_URL = 'https://ucyhfxapegpoubixlayp.supabase.co'; 
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjeWhmeGFwZWdwb3ViaXhsYXlwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQwMDMxMjAsImV4cCI6MjA4OTU3OTEyMH0.HkJ5Y0SPBjiCcg8eErtCWhHYIwlA4HV9TrfTRxpHIh0'; 
 
-        // Инициализация базы
         const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        // ID пользователя
-        if (!localStorage.getItem('my_uid')) localStorage.setItem('my_uid', 'u' + Date.now());
+        // Уникальный ID устройства
+        if (!localStorage.getItem('my_uid')) localStorage.setItem('my_uid', 'u' + Date.now() + Math.floor(Math.random() * 1000));
         const myUid = localStorage.getItem('my_uid');
 
-        // Карта
-        var map = L.map('map', { zoomControl: false }).setView([56.13, 101.60], 12);
+        // Инициализация карты
+        var map = L.map('map', { zoomControl: false, tap: true }).setView([56.13, 101.60], 12);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-        const dpsIcon = L.divIcon({ html: '🚔', className: '', iconSize: [30, 30], iconAnchor: [15, 15] });
-        const myCarIcon = L.divIcon({ html: '🚙', className: '', iconSize: [35, 35], iconAnchor: [17, 17] });
+        const dpsIcon = L.divIcon({ html: '🚔', className: '', iconSize: [32, 32], iconAnchor: [16, 16] });
+        const myCarIcon = L.divIcon({ html: '🚙', className: '', iconSize: [38, 38], iconAnchor: [19, 19] });
 
         var userMarker, userCoords;
         var markersLayer = L.layerGroup().addTo(map);
 
-        // --- ЛОГИКА ЧАТА ---
         function toggleChat() {
             document.getElementById('chat-window').classList.toggle('minimized');
             document.getElementById('toggle-icon').innerText = document.getElementById('chat-window').classList.contains('minimized') ? '+' : '—';
         }
 
-        async function loadData() {
-            // Загрузка сообщений
-            const { data: msgs } = await supabaseClient.from('messages').select('*').order('created_at', { ascending: false }).limit(15);
-            if (msgs) msgs.reverse().forEach(m => appendMsg(m.text));
-
-            // Загрузка меток
-            const { data: mrks } = await supabaseClient.from('markers').select('*');
-            if (mrks) mrks.forEach(renderMarker);
-        }
-
         function appendMsg(txt) {
             const box = document.getElementById('chat-messages');
-            box.innerHTML += `<div><b>Водитель:</b> ${txt}</div>`;
+            box.innerHTML += `<div><b>Система:</b> ${txt}</div>`;
             box.scrollTop = box.scrollHeight;
         }
 
+        // Рендер метки
         function renderMarker(m) {
-            let h = `<b>${m.content}</b>`;
-            if (m.image_url) h += `<img src="${m.image_url}" class="popup-img" onclick="window.open('${m.image_url}')">`;
-            if (m.user_id === myUid) h += `<br><button onclick="deleteMarker(${m.id})" style="width:100%; margin-top:5px; background:red; color:white; border:none; padding:5px; border-radius:5px;">Удалить</button>`;
-            L.marker([m.lat, m.lng], {icon: dpsIcon}).addTo(markersLayer).bindPopup(h);
+            let html = `<div style="min-width:150px;"><b>${m.content}</b>`;
+            if (m.image_url) html += `<img src="${m.image_url}" class="popup-img" onclick="window.open('${m.image_url}')">`;
+            if (m.user_id === myUid) html += `<button class="del-btn" onclick="deleteMarker(${m.id})">Удалить</button>`;
+            html += `</div>`;
+            
+            L.marker([m.lat, m.lng], {icon: dpsIcon}).addTo(markersLayer).bindPopup(html);
         }
 
-        // --- АДМИН КОДЫ И ОТПРАВКА ---
-        document.getElementById('chat-input').onkeypress = async (e) => {
-            if (e.key === 'Enter' && e.target.value) {
-                const val = e.target.value;
-                if (val === 'Cleanchat') {
-                    await supabaseClient.from('messages').delete().neq('id', 0);
-                } else if (val === 'Cleanmarker') {
-                    await supabaseClient.from('markers').delete().neq('id', 0);
-                } else {
-                    await supabaseClient.from('messages').insert([{ text: val }]);
-                }
-                e.target.value = '';
+        // --- ГЛАВНАЯ ФУНКЦИЯ СОХРАНЕНИЯ ---
+        async function saveMarker(lat, lng) {
+            const txt = prompt("Что здесь происходит? (ДПС, Авария, Камера)");
+            if (!txt) return;
+
+            let imgUrl = null;
+            if (confirm("Добавить фото?")) {
+                const input = document.createElement('input');
+                input.type = 'file'; input.accept = 'image/*';
+                input.onchange = async () => {
+                    const file = input.files[0];
+                    if (file) {
+                        const fname = 'img_' + Date.now() + '.jpg';
+                        const { data, error } = await supabaseClient.storage.from('images').upload(fname, file);
+                        if (data) {
+                            imgUrl = `${SUPABASE_URL}/storage/v1/object/public/images/${fname}`;
+                            sendToDb(lat, lng, txt, imgUrl);
+                        } else { alert("Ошибка фото: " + error.message); }
+                    }
+                };
+                input.click();
+            } else {
+                sendToDb(lat, lng, txt, null);
             }
+        }
+
+        async function sendToDb(lat, lng, content, img) {
+            const { error } = await supabaseClient.from('markers').insert([{
+                lat, lng, content, image_url: img, user_id: myUid
+            }]);
+            
+            if (!error) {
+                await supabaseClient.from('messages').insert([{ text: "🚔 " + content }]);
+            } else {
+                alert("Ошибка базы: " + error.message);
+            }
+        }
+
+        // --- ОБРАБОТЧИКИ НАЖАТИЙ ---
+        
+        // 1. Клик по любому месту карты
+        map.on('click', function(e) {
+            saveMarker(e.latlng.lat, e.latlng.lng);
+        });
+
+        // 2. Кнопка "Метка тут" (по GPS)
+        function addAtUserLocation() {
+            if (!userCoords) return alert("Сначала нажми 'ГДЕ Я?', чтобы поймать сигнал GPS");
+            saveMarker(userCoords.lat, userCoords.lng);
+        }
+
+        // --- УДАЛЕНИЕ ---
+        window.deleteMarker = async (id) => {
+            const { error } = await supabaseClient.from('markers').delete().eq('id', id);
+            if (error) alert("Не удалось удалить: " + error.message);
         };
 
-        // --- REALTIME ---
-        supabaseClient.channel('db-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, (p) => {
-            if (p.eventType === 'INSERT') appendMsg(p.new.text);
-            if (p.eventType === 'DELETE') document.getElementById('chat-messages').innerHTML = '';
-        }).on('postgres_changes', { event: '*', schema: 'public', table: 'markers' }, (p) => {
-            if (p.eventType === 'INSERT') renderMarker(p.new);
-            if (p.eventType === 'DELETE') { markersLayer.clearLayers(); loadData(); }
-        }).subscribe();
-
-        // --- ОНЛАЙН ---
-        const pres = supabaseClient.channel('online_users');
-        pres.on('presence', { event: 'sync' }, () => {
-            document.getElementById('online-count').innerText = Object.keys(pres.presenceState()).length;
-        }).subscribe(async (s) => { if (s === 'SUBSCRIBED') await pres.track({ online: true }); });
-
-        // --- КНОПКИ ---
-        function getLocation() { map.locate({setView: true, maxZoom: 15}); }
+        // --- GPS ---
+        function getLocation() {
+            map.locate({setView: true, maxZoom: 15, enableHighAccuracy: true});
+        }
         map.on('locationfound', e => {
             userCoords = e.latlng;
             if (userMarker) userMarker.setLatLng(e.latlng);
             else userMarker = L.marker(e.latlng, {icon: myCarIcon}).addTo(map);
         });
 
-        async function addCustomMarker() {
-            const latlng = userCoords || map.getCenter();
-            const txt = prompt("Что видишь?");
-            if (!txt) return;
+        // --- REALTIME ---
+        supabaseClient.channel('db').on('postgres_changes', { event: '*', schema: 'public', table: 'markers' }, (p) => {
+            if (p.eventType === 'INSERT') renderMarker(p.new);
+            if (p.eventType === 'DELETE') { markersLayer.clearLayers(); initLoad(); }
+        }).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (p) => {
+            appendMsg(p.new.text);
+        }).subscribe();
 
-            let imgUrl = null;
-            if (confirm("Сделать фото?")) {
-                const input = document.createElement('input');
-                input.type = 'file'; input.accept = 'image/*';
-                input.onchange = async () => {
-                    const file = input.files[0];
-                    if (file) {
-                        const fname = Date.now() + '.jpg';
-                        const { data } = await supabaseClient.storage.from('images').upload(fname, file);
-                        if (data) {
-                            imgUrl = `${SUPABASE_URL}/storage/v1/object/public/images/${fname}`;
-                            finishSave(latlng, txt, imgUrl);
-                        }
-                    }
-                };
-                input.click();
-            } else {
-                finishSave(latlng, txt, null);
-            }
+        // Онлайн
+        const pres = supabaseClient.channel('online');
+        pres.on('presence', { event: 'sync' }, () => {
+            document.getElementById('online-count').innerText = Object.keys(pres.presenceState()).length;
+        }).subscribe(async (s) => { if (s === 'SUBSCRIBED') await pres.track({ online: true }); });
+
+        // Первоначальная загрузка
+        async function initLoad() {
+            const { data: mrks } = await supabaseClient.from('markers').select('*');
+            if (mrks) mrks.forEach(renderMarker);
+            
+            const { data: msgs } = await supabaseClient.from('messages').select('*').order('created_at', {ascending: false}).limit(10);
+            if (msgs) msgs.reverse().forEach(m => appendMsg(m.text));
         }
 
-        async function finishSave(ll, t, img) {
-            await supabaseClient.from('markers').insert([{ lat: ll.lat, lng: ll.lng, content: t, image_url: img, user_id: myUid }]);
-            await supabaseClient.from('messages').insert([{ text: "🚔 Метка: " + t }]);
-        }
-
-        window.deleteMarker = async (id) => {
-            await supabaseClient.from('markers').delete().eq('id', id);
-        };
-
-        loadData();
+        initLoad();
     </script>
 </body>
 </html>
-
