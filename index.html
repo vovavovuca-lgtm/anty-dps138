@@ -1,184 +1,151 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Братск Локатор Pro</title>
-    
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; background: #222; font-family: sans-serif; overflow: hidden; }
-        #map { height: 100vh; width: 100vw; background: #1a1a1a; } /* Тёмный фон, пока грузится карта */
-
-        /* Интерфейс */
-        #online-tracker { position: absolute; top: 15px; left: 15px; z-index: 1001; background: rgba(0,0,0,0.8); color: #00ff00; padding: 5px 15px; border-radius: 20px; font-size: 13px; border: 1px solid #00ff00; }
+        body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; }
+        canvas { display: block; background: #222; }
         
-        #chat-window { position: absolute; top: 15px; right: 15px; width: 260px; z-index: 1001; background: rgba(0,0,0,0.9); border-radius: 12px; display: flex; flex-direction: column; box-shadow: 0 4px 20px rgba(0,0,0,0.5); border: 1px solid #333; }
-        #chat-header { padding: 12px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; color: white; font-weight: bold; }
-        #chat-body { height: 250px; display: flex; flex-direction: column; }
-        #chat-messages { flex: 1; overflow-y: auto; padding: 10px; color: #eee; font-size: 13px; border-top: 1px solid #333; }
-        #chat-input { background: #222; border: none; padding: 12px; color: white; border-radius: 0 0 12px 12px; outline: none; border-top: 1px solid #333; }
-        .minimized #chat-body { display: none; }
-
-        .controls { position: absolute; bottom: 25px; left: 10px; right: 10px; z-index: 1001; display: flex; gap: 10px; }
-        .btn { flex: 1; border: none; padding: 15px; border-radius: 12px; font-weight: bold; color: white; cursor: pointer; font-size: 14px; }
-        .btn-blue { background: #0077ff; }
-        .btn-green { background: #28a745; }
-
-        .popup-img { width: 100%; border-radius: 8px; margin-top: 8px; cursor: pointer; }
+        /* Стили для кнопок управления */
+        .controls {
+            position: fixed; bottom: 20px; width: 100%;
+            display: flex; justify-content: space-between; padding: 0 20px;
+            box-sizing: border-box; pointer-events: none;
+        }
+        .btn {
+            width: 60px; height: 60px; background: rgba(255,255,255,0.2);
+            border-radius: 50%; display: flex; align-items: center;
+            justify-content: center; color: white; font-weight: bold;
+            pointer-events: auto; user-select: none; -webkit-tap-highlight-color: transparent;
+        }
+        .btn:active { background: rgba(255,255,255,0.5); }
+        .left-side { display: flex; gap: 10px; }
+        .right-side { display: flex; gap: 10px; }
     </style>
 </head>
 <body>
 
-    <div id="online-tracker">Онлайн: <span id="online-count">1</span></div>
+<canvas id="game"></canvas>
 
-    <div id="chat-window">
-        <div id="chat-header" onclick="toggleChat()">
-            <span>💬 ЧАТ СОБЫТИЙ</span>
-            <span id="toggle-icon">—</span>
-        </div>
-        <div id="chat-body">
-            <div id="chat-messages"></div>
-            <input type="text" id="chat-input" placeholder="Введите сообщение...">
-        </div>
+<div class="controls">
+    <div class="left-side">
+        <div class="btn" id="btnLeft">←</div>
+        <div class="btn" id="btnRight">→</div>
     </div>
-
-    <div id="map"></div>
-
-    <div class="controls">
-        <button class="btn btn-blue" onclick="getLocation()">📍 ГДЕ Я?</button>
-        <button class="btn btn-green" onclick="addCustomMarker()">🚔 МЕТКА ТУТ</button>
+    <div class="right-side">
+        <div class="btn" id="btnJump" style="background: rgba(0,255,0,0.3)">UP</div>
+        <div class="btn" id="btnAttack" style="background: rgba(255,0,0,0.3)">HIT</div>
     </div>
+</div>
 
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const canvas = document.getElementById('game');
+const c = canvas.getContext('2d');
+
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight * 0.6; // Оставляем место под кнопки
+
+const gravity = 0.6;
+let keys = { left: false, right: false };
+
+class Fighter {
+    constructor({ position, color, offset }) {
+        this.position = position;
+        this.velocity = { x: 0, y: 0 };
+        this.width = 40;
+        this.height = 100;
+        this.color = color;
+        this.health = 100;
+        this.isAttacking = false;
+        this.attackBox = { position: { x: 0, y: 0 }, width: 80, height: 40, offset };
+    }
+
+    draw() {
+        c.fillStyle = this.color;
+        c.fillRect(this.position.x, this.position.y, this.width, this.height);
+        
+        // Полоска HP
+        c.fillStyle = 'white';
+        c.fillRect(this.position.x, this.position.y - 15, this.width, 5);
+        c.fillStyle = 'red';
+        c.fillRect(this.position.x, this.position.y - 15, (this.health/100)*this.width, 5);
+
+        if (this.isAttacking) {
+            c.fillStyle = 'yellow';
+            c.fillRect(this.attackBox.position.x, this.attackBox.position.y, this.attackBox.width, this.attackBox.height);
+        }
+    }
+
+    update() {
+        this.draw();
+        this.attackBox.position.x = this.position.x + this.attackBox.offset.x;
+        this.attackBox.position.y = this.position.y + 20;
+
+        this.position.x += this.velocity.x;
+        this.position.y += this.velocity.y;
+
+        if (this.position.y + this.height + this.velocity.y >= canvas.height) {
+            this.velocity.y = 0;
+        } else this.velocity.y += gravity;
+    }
+
+    attack() {
+        this.isAttacking = true;
+        setTimeout(() => this.isAttacking = false, 150);
+    }
+}
+
+const player = new Fighter({
+    position: { x: 50, y: 0 },
+    color: '#00ccff',
+    offset: { x: 0, y: 0 }
+});
+
+const bot = new Fighter({
+    position: { x: canvas.width - 100, y: 0 },
+    color: '#ff4444',
+    offset: { x: -40, y: 0 }
+});
+
+// Обработка нажатий на кнопки
+const setupBtn = (id, key) => {
+    const el = document.getElementById(id);
+    el.addEventListener('touchstart', (e) => { e.preventDefault(); if(key === 'jump') { if(player.velocity.y === 0) player.velocity.y = -15; } else if(key === 'attack') { player.attack(); } else { keys[key] = true; } });
+    el.addEventListener('touchend', (e) => { e.preventDefault(); if(key !== 'jump' && key !== 'attack') keys[key] = false; });
+};
+
+setupBtn('btnLeft', 'left');
+setupBtn('btnRight', 'right');
+setupBtn('btnJump', 'jump');
+setupBtn('btnAttack', 'attack');
+
+function animate() {
+    requestAnimationFrame(animate);
+    c.clearRect(0, 0, canvas.width, canvas.height);
     
-    <script>
-        // ДАННЫЕ ПРОЕКТА
-        const SUPABASE_URL = 'https://ucyhfxapegpoubixlayp.supabase.co'; 
-        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjeWhmeGFwZWdwb3ViaXhsYXlwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQwMDMxMjAsImV4cCI6MjA4OTU3OTEyMH0.HkJ5Y0SPBjiCcg8eErtCWhHYIwlA4HV9TrfTRxpHIh0'; 
+    player.update();
+    bot.update();
 
-        // Инициализация базы
-        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    player.velocity.x = 0;
+    if (keys.left) player.velocity.x = -5;
+    if (keys.right) player.velocity.x = 5;
 
-        // ID пользователя
-        if (!localStorage.getItem('my_uid')) localStorage.setItem('my_uid', 'u' + Date.now());
-        const myUid = localStorage.getItem('my_uid');
+    // Простая логика для Ботa (двигается к игроку)
+    if (bot.position.x > player.position.x + 50) bot.velocity.x = -2;
+    else if (bot.position.x < player.position.x - 50) bot.velocity.x = 2;
+    else {
+        bot.velocity.x = 0;
+        if (Math.random() < 0.02) bot.attack();
+    }
 
-        // Карта
-        var map = L.map('map', { zoomControl: false }).setView([56.13, 101.60], 12);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+    // Коллизии
+    if (player.isAttacking && player.attackBox.position.x < bot.position.x + bot.width && player.attackBox.position.x + player.attackBox.width > bot.position.x && player.attackBox.position.y < bot.position.y + bot.height) {
+        bot.health -= 1;
+        player.isAttacking = false;
+    }
+}
 
-        const dpsIcon = L.divIcon({ html: '🚔', className: '', iconSize: [30, 30], iconAnchor: [15, 15] });
-        const myCarIcon = L.divIcon({ html: '🚙', className: '', iconSize: [35, 35], iconAnchor: [17, 17] });
-
-        var userMarker, userCoords;
-        var markersLayer = L.layerGroup().addTo(map);
-
-        // --- ЛОГИКА ЧАТА ---
-        function toggleChat() {
-            document.getElementById('chat-window').classList.toggle('minimized');
-            document.getElementById('toggle-icon').innerText = document.getElementById('chat-window').classList.contains('minimized') ? '+' : '—';
-        }
-
-        async function loadData() {
-            // Загрузка сообщений
-            const { data: msgs } = await supabaseClient.from('messages').select('*').order('created_at', { ascending: false }).limit(15);
-            if (msgs) msgs.reverse().forEach(m => appendMsg(m.text));
-
-            // Загрузка меток
-            const { data: mrks } = await supabaseClient.from('markers').select('*');
-            if (mrks) mrks.forEach(renderMarker);
-        }
-
-        function appendMsg(txt) {
-            const box = document.getElementById('chat-messages');
-            box.innerHTML += `<div><b>Водитель:</b> ${txt}</div>`;
-            box.scrollTop = box.scrollHeight;
-        }
-
-        function renderMarker(m) {
-            let h = `<b>${m.content}</b>`;
-            if (m.image_url) h += `<img src="${m.image_url}" class="popup-img" onclick="window.open('${m.image_url}')">`;
-            if (m.user_id === myUid) h += `<br><button onclick="deleteMarker(${m.id})" style="width:100%; margin-top:5px; background:red; color:white; border:none; padding:5px; border-radius:5px;">Удалить</button>`;
-            L.marker([m.lat, m.lng], {icon: dpsIcon}).addTo(markersLayer).bindPopup(h);
-        }
-
-        // --- АДМИН КОДЫ И ОТПРАВКА ---
-        document.getElementById('chat-input').onkeypress = async (e) => {
-            if (e.key === 'Enter' && e.target.value) {
-                const val = e.target.value;
-                if (val === 'Cleanchat') {
-                    await supabaseClient.from('messages').delete().neq('id', 0);
-                } else if (val === 'Cleanmarker') {
-                    await supabaseClient.from('markers').delete().neq('id', 0);
-                } else {
-                    await supabaseClient.from('messages').insert([{ text: val }]);
-                }
-                e.target.value = '';
-            }
-        };
-
-        // --- REALTIME ---
-        supabaseClient.channel('db-changes').on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, (p) => {
-            if (p.eventType === 'INSERT') appendMsg(p.new.text);
-            if (p.eventType === 'DELETE') document.getElementById('chat-messages').innerHTML = '';
-        }).on('postgres_changes', { event: '*', schema: 'public', table: 'markers' }, (p) => {
-            if (p.eventType === 'INSERT') renderMarker(p.new);
-            if (p.eventType === 'DELETE') { markersLayer.clearLayers(); loadData(); }
-        }).subscribe();
-
-        // --- ОНЛАЙН ---
-        const pres = supabaseClient.channel('online_users');
-        pres.on('presence', { event: 'sync' }, () => {
-            document.getElementById('online-count').innerText = Object.keys(pres.presenceState()).length;
-        }).subscribe(async (s) => { if (s === 'SUBSCRIBED') await pres.track({ online: true }); });
-
-        // --- КНОПКИ ---
-        function getLocation() { map.locate({setView: true, maxZoom: 15}); }
-        map.on('locationfound', e => {
-            userCoords = e.latlng;
-            if (userMarker) userMarker.setLatLng(e.latlng);
-            else userMarker = L.marker(e.latlng, {icon: myCarIcon}).addTo(map);
-        });
-
-        async function addCustomMarker() {
-            const latlng = userCoords || map.getCenter();
-            const txt = prompt("Что видишь?");
-            if (!txt) return;
-
-            let imgUrl = null;
-            if (confirm("Сделать фото?")) {
-                const input = document.createElement('input');
-                input.type = 'file'; input.accept = 'image/*';
-                input.onchange = async () => {
-                    const file = input.files[0];
-                    if (file) {
-                        const fname = Date.now() + '.jpg';
-                        const { data } = await supabaseClient.storage.from('images').upload(fname, file);
-                        if (data) {
-                            imgUrl = `${SUPABASE_URL}/storage/v1/object/public/images/${fname}`;
-                            finishSave(latlng, txt, imgUrl);
-                        }
-                    }
-                };
-                input.click();
-            } else {
-                finishSave(latlng, txt, null);
-            }
-        }
-
-        async function finishSave(ll, t, img) {
-            await supabaseClient.from('markers').insert([{ lat: ll.lat, lng: ll.lng, content: t, image_url: img, user_id: myUid }]);
-            await supabaseClient.from('messages').insert([{ text: "🚔 Метка: " + t }]);
-        }
-
-        window.deleteMarker = async (id) => {
-            await supabaseClient.from('markers').delete().eq('id', id);
-        };
-
-        loadData();
-    </script>
+animate();
+</script>
 </body>
 </html>
