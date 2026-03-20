@@ -3,146 +3,152 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Братск Локатор ДПС</title>
+    <title>Братск Локатор</title>
+    
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
+    
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; background: #2a2a2a; font-family: 'Segoe UI', sans-serif; }
-        #map { height: 100vh; width: 100vw; z-index: 1; }
-        .add-btn {
-            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 1000;
-            background: #0077ff; color: white; padding: 18px 30px; border-radius: 50px; border: none; font-weight: bold; font-size: 1.1em;
-            box-shadow: 0 6px 20px rgba(0,0,0,0.5); cursor: pointer; text-shadow: 0 1px 1px rgba(0,0,0,0.3);
+        body, html { margin: 0; padding: 0; height: 100%; background: #1a1a1a; font-family: sans-serif; overflow: hidden; }
+        #map { height: 100vh; width: 100vw; }
+        
+        /* Панель управления */
+        .controls { position: absolute; bottom: 20px; left: 10px; right: 10px; z-index: 1000; display: flex; gap: 10px; }
+        .btn { flex: 1; background: #0077ff; color: white; border: none; padding: 12px; border-radius: 10px; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.3); cursor: pointer; }
+        .btn-gps { background: #28a745; }
+        
+        /* Чат */
+        #chat-container {
+            position: absolute; top: 10px; right: 10px; width: 250px; height: 300px; 
+            background: rgba(0,0,0,0.8); color: white; z-index: 1000; 
+            border-radius: 10px; display: flex; flex-direction: column; font-size: 13px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
         }
-        .add-btn:active { background: #0055dd; box-shadow: 0 3px 10px rgba(0,0,0,0.5); transform: translateX(-50%) translateY(1px); }
-        .popup-container { min-width: 220px; padding: 10px; border-radius: 8px; }
-        .popup-input { width: 100%; margin-bottom: 12px; padding: 8px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; }
-        .photo-preview { width: 100%; border-radius: 8px; display: none; margin-bottom: 12px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
-        .btn-save { background: #2cc050; color: white; border: none; padding: 10px; width: 100%; border-radius: 6px; font-weight: bold; font-size: 1.1em; cursor: pointer; }
-        .btn-photo { background: #555; color: white; border: none; padding: 10px; width: 100%; border-radius: 6px; margin-bottom: 8px; cursor: pointer; font-weight: normal; }
-        /* Кастомный стиль для балунов Leaflet */
-        .leaflet-popup-content-wrapper { border-radius: 12px; }
+        #chat-messages { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 5px; }
+        #chat-input { background: #333; border: none; padding: 10px; color: white; border-radius: 0 0 10px 10px; }
+        
+        /* Счетчик онлайна */
+        #online-tracker {
+            position: absolute; top: 10px; left: 50px; z-index: 1000;
+            background: rgba(0,0,0,0.7); color: #00ff00; padding: 5px 12px;
+            border-radius: 20px; font-size: 12px; font-weight: bold; border: 1px solid #00ff00;
+        }
+
+        .popup-img { width: 100%; border-radius: 8px; margin-top: 5px; }
     </style>
 </head>
 <body>
 
+    <div id="online-tracker">Онлайн: <span id="online-count">1</span></div>
+    
+    <div id="chat-container">
+        <div style="padding: 10px; border-bottom: 1px solid #444; font-weight: bold;">Чат событий</div>
+        <div id="chat-messages"></div>
+        <input type="text" id="chat-input" placeholder="Написать в чат...">
+    </div>
+
     <div id="map"></div>
-    <button class="add-btn" onclick="getLocation()">📍 ГДЕ Я? (🚙)</button>
+
+    <div class="controls">
+        <button class="btn" onclick="getLocation(true)">📍 Где я? (🚙)</button>
+        <button class="btn btn-gps" onclick="dropMarkerAtMyPlace()">🚔 Метка здесь</button>
+    </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     
     <script>
-        // --- 1. ТВОИ ДАННЫЕ (УЖЕ ВСТАВЛЕНЫ) ---
         const SUPABASE_URL = 'https://ucyhfxapegpoubixlayp.supabase.co'; 
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjeWhmeGFwZWdwb3ViaXhsYXlwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQwMDMxMjAsImV4cCI6MjA4OTU3OTEyMH0.HkJ5Y0SPBjiCcg8eErtCWhHYIwlA4HV9TrfTRxpHIh0'; 
-
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        // --- 2. ИКОНКИ ---
-        // Иконка для ДПС меток (🚔) - Ссылка на внешний стикер
-        var dpsIcon = L.icon({
-            iconUrl: 'https://raw.githubusercontent.com/yandod/Leaflet.Emoji/master/dist/images/1f694.png',
-            iconSize: [36, 36], 
-            iconAnchor: [18, 18], 
-            popupAnchor: [0, -18]
-        });
+        // --- ИКОНКИ (SVG для надежности) ---
+        const dpsIcon = L.divIcon({ html: '🚔', className: 'emoji-icon', iconSize: [30, 30], iconAnchor: [15, 15] });
+        const myCarIcon = L.divIcon({ html: '🚙', className: 'emoji-icon', iconSize: [35, 35], iconAnchor: [17, 17] });
 
-        // Иконка для твоей геолокации (🚙)
-        var myCarIcon = L.icon({
-            iconUrl: 'https://raw.githubusercontent.com/yandod/Leaflet.Emoji/master/dist/images/1f699.png',
-            iconSize: [36, 36], 
-            iconAnchor: [18, 18], 
-            popupAnchor: [0, -18]
-        });
-
-        // --- 3. ИНИЦИАЛИЗАЦИЯ КАРТЫ ---
         var map = L.map('map', { zoomControl: false }).setView([56.13, 101.60], 12);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-        // Загрузка существующих меток
+        // Поиск
+        L.Control.geocoder({ defaultMarkGeocode: true }).addTo(map);
+
+        var userMarker, userCoords;
+
+        // Загрузка меток
         async function loadMarkers() {
-            try {
-                const { data } = await supabaseClient.from('markers').select('*');
-                if (data) {
-                    data.forEach(m => {
-                        let content = `<b>${m.content}</b>`;
-                        if (m.image_url) content += `<br><img src="${m.image_url}" style="width:100%; border-radius:8px; margin-top:8px;">`;
-                        L.marker([m.lat, m.lng], {icon: dpsIcon}).addTo(map).bindPopup(content);
-                    });
-                }
-            } catch (err) { console.error("Ошибка загрузки:", err); }
+            const { data } = await supabaseClient.from('markers').select('*');
+            if (data) data.forEach(addMarkerToMap);
+        }
+        function addMarkerToMap(m) {
+            let content = `<b>${m.content}</b>`;
+            if (m.image_url) content += `<br><img src="${m.image_url}" class="popup-img">`;
+            L.marker([m.lat, m.lng], {icon: dpsIcon}).addTo(map).bindPopup(content);
         }
         loadMarkers();
 
-        // Клик по карте (новая метка)
-        map.on('click', function(e) {
-            let tempLat = e.latlng.lat;
-            let tempLng = e.latlng.lng;
-            let currentImageUrl = null;
+        // --- ЧАТ И СООБЩЕНИЯ ---
+        async function sendChatMessage(txt) {
+            await supabaseClient.from('messages').insert([{ text: txt }]);
+        }
 
-            const container = document.createElement('div');
-            container.className = 'popup-container';
-            container.innerHTML = `
-                <input type="text" id="pop-text" class="popup-input" placeholder="Что тут? (Патруль, Яма)">
-                <img id="pop-preview" class="photo-preview">
-                <button id="pop-photo-btn" class="btn-photo">📷 Добавить фото</button>
-                <button id="pop-save-btn" class="btn-save">Сохранить</button>
-            `;
+        // Подписка на чат (Realtime)
+        supabaseClient.channel('chat')
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
+                const msgDiv = document.getElementById('chat-messages');
+                msgDiv.innerHTML += `<div><b>${payload.new.username}:</b> ${payload.new.text}</div>`;
+                msgDiv.scrollTop = msgDiv.scrollHeight;
+            }).subscribe();
 
-            const popup = L.popup().setLatLng(e.latlng).setContent(container).openOn(map);
-
-            container.querySelector('#pop-photo-btn').onclick = () => {
-                const input = document.createElement('input');
-                input.type = 'file';
-                input.accept = 'image/*';
-                input.onchange = async () => {
-                    const file = input.files[0];
-                    if (file) {
-                        const fileName = `img_${Date.now()}.jpg`;
-                        container.querySelector('#pop-photo-btn').innerText = "Загрузка фото...";
-                        
-                        const { data, error } = await supabaseClient.storage.from('images').upload(fileName, file);
-                        
-                        if (!error) {
-                            currentImageUrl = `${SUPABASE_URL}/storage/v1/object/public/images/${fileName}`;
-                            const preview = container.querySelector('#pop-preview');
-                            preview.src = currentImageUrl;
-                            preview.style.display = 'block';
-                            container.querySelector('#pop-photo-btn').style.display = 'none';
-                        } else { alert("Ошибка загрузки фото: " + error.message); }
-                    }
-                };
-                input.click();
-            };
-
-            container.querySelector('#pop-save-btn').onclick = async () => {
-                const text = container.querySelector('#pop-text').value;
-                if (!text) return alert("Введите текст!");
-                container.querySelector('#pop-save-btn').innerText = "Сохранение...";
-                const { error } = await supabaseClient.from('markers').insert([{ lat: tempLat, lng: tempLng, content: text, image_url: currentImageUrl }]);
-
-                if (!error) {
-                    map.closePopup();
-                    let finalContent = `<b>${text}</b>`;
-                    if (currentImageUrl) finalContent += `<br><img src="${currentImageUrl}" style="width:100%; border-radius:8px; margin-top:8px;">`;
-                    L.marker([tempLat, tempLng], {icon: dpsIcon}).addTo(map).bindPopup(finalContent);
-                } else { alert("Ошибка базы: " + error.message); }
-            };
-        });
-
-        // --- 4. ГЕОЛОКАЦИЯ ---
-        function getLocation() { map.locate({setView: true, maxZoom: 16}); }
-
-        var userMarker;
-        map.on('locationfound', function(e) {
-            if (userMarker) {
-                userMarker.setLatLng(e.latlng);
-            } else {
-                userMarker = L.marker(e.latlng, {icon: myCarIcon}).addTo(map).bindPopup("Я тут 🚙").openPopup();
+        document.getElementById('chat-input').addEventListener('keypress', e => {
+            if (e.key === 'Enter' && e.target.value) {
+                sendChatMessage(e.target.value);
+                e.target.value = '';
             }
         });
 
-        map.on('locationerror', function() { alert("Включи GPS в настройках телефона."); });
+        // --- ОНЛАЙН ТРЕКЕР ---
+        const presence = supabaseClient.channel('online');
+        presence.on('presence', { event: 'sync' }, () => {
+            const state = presence.presenceState();
+            document.getElementById('online-count').innerText = Object.keys(state).length;
+        }).subscribe(async (status) => {
+            if (status === 'SUBSCRIBED') await presence.track({ online_at: new Date().toISOString() });
+        });
+
+        // --- ГЕОЛОКАЦИЯ ---
+        function getLocation(zoom = false) {
+            map.locate({setView: zoom, maxZoom: 16, enableHighAccuracy: true, watch: true});
+        }
+
+        map.on('locationfound', e => {
+            userCoords = e.latlng;
+            if (userMarker) userMarker.setLatLng(e.latlng);
+            else userMarker = L.marker(e.latlng, {icon: myCarIcon}).addTo(map).bindPopup("Я тут");
+        });
+
+        // Метка на моем месте
+        async function dropMarkerAtMyPlace() {
+            if (!userCoords) return alert("Сначала нажми 'Где я?', чтобы поймать GPS");
+            const text = prompt("Что видишь?");
+            if (text) {
+                await supabaseClient.from('markers').insert([{ lat: userCoords.lat, lng: userCoords.lng, content: text }]);
+                await sendChatMessage(`🚔 Новая метка: ${text}`);
+                addMarkerToMap({lat: userCoords.lat, lng: userCoords.lng, content: text});
+            }
+        }
+
+        // Обычный клик по карте
+        map.on('click', async e => {
+            const text = prompt("Событие на карте:");
+            if (text) {
+                await supabaseClient.from('markers').insert([{ lat: e.latlng.lat, lng: e.latlng.lng, content: text }]);
+                await sendChatMessage(`📍 Заметка: ${text}`);
+                addMarkerToMap({lat: e.latlng.lat, lng: e.latlng.lng, content: text});
+            }
+        });
+
+        getLocation(); // Сразу ищем юзера
     </script>
 </body>
 </html>
