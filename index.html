@@ -3,62 +3,100 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Братск Локатор Исправленный</title>
+    <title>Братск Локатор PRO</title>
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; background: #1a1a1a; font-family: -apple-system, sans-serif; overflow: hidden; }
-        #map { height: 100vh; width: 100vw; background: #222; }
+        :root {
+            --bg-dark: #121212;
+            --panel-bg: rgba(26, 26, 26, 0.95);
+            --border-color: #333;
+            --primary: #0077ff;
+            --primary-gradient: linear-gradient(135deg, #0077ff, #0055dd);
+            --green-gradient: linear-gradient(135deg, #2ecc71, #27ae60);
+            --text-main: #e0e0e0;
+            --text-muted: #888;
+            --shadow: 0 8px 32px rgba(0,0,0,0.4);
+            --blur: blur(5px);
+        }
 
-        /* Интерфейс */
-        #online-tracker { position: absolute; top: 15px; left: 15px; z-index: 1001; background: rgba(0,0,0,0.8); color: #00ff00; padding: 5px 15px; border-radius: 20px; font-size: 13px; border: 1px solid #00ff00; font-weight: bold; }
+        body, html { margin: 0; padding: 0; height: 100%; background: var(--bg-dark); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; overflow: hidden; color: var(--text-main); }
+        #map { height: 100vh; width: 100vw; background: #222; z-index: 1; }
+
+        /* СКВЕРУ: Трекер онлайна и Кнопка чата */
+        .top-floaters { position: absolute; top: 15px; left: 15px; right: 15px; z-index: 1000; display: flex; justify-content: space-between; align-items: center; pointer-events: none; }
+        .floater-panel { background: var(--panel-bg); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); border: 1px solid var(--border-color); border-radius: 12px; box-shadow: var(--shadow); pointer-events: auto; }
         
-        #chat-window { position: absolute; top: 15px; right: 15px; width: 260px; z-index: 1001; background: rgba(0,0,0,0.9); border-radius: 12px; display: flex; flex-direction: column; box-shadow: 0 4px 20px rgba(0,0,0,0.5); border: 1px solid #333; transition: height 0.3s; }
-        #chat-header { padding: 12px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; color: white; font-weight: bold; }
-        #chat-body { height: 200px; display: flex; flex-direction: column; }
-        #chat-messages { flex: 1; overflow-y: auto; padding: 10px; color: #eee; font-size: 12px; border-top: 1px solid #333; }
-        .minimized #chat-body { display: none; }
+        #online-tracker { padding: 6px 14px; color: #00ff00; font-size: 13px; font-weight: bold; }
+        
+        #chat-toggle { background: var(--primary-gradient); color: white; border: none; padding: 10px 18px; border-radius: 20px; font-weight: bold; cursor: pointer; transition: 0.2s; font-size: 13px; }
+        #chat-toggle:active { transform: scale(0.95); opacity: 0.9; }
 
-        .controls { position: absolute; bottom: 25px; left: 10px; right: 10px; z-index: 1001; display: flex; gap: 10px; }
-        .btn { flex: 1; border: none; padding: 15px; border-radius: 12px; font-weight: bold; color: white; cursor: pointer; font-size: 14px; text-transform: uppercase; box-shadow: 0 4px 10px rgba(0,0,0,0.4); }
-        .btn-blue { background: #0077ff; }
-        .btn-green { background: #28a745; }
+        /* ПАНЕЛЬ ЧАТА (Справа) */
+        #chat-window { position: absolute; top: 70px; right: 15px; width: 280px; z-index: 1000; background: var(--panel-bg); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); border-radius: 16px; display: flex; flex-direction: column; box-shadow: var(--shadow); border: 1px solid var(--border-color); opacity: 0; transform: translateY(-10px); pointer-events: none; transition: 0.3s; }
+        #chat-window.open { opacity: 1; transform: translateY(0); pointer-events: auto; }
+        
+        #chat-header { padding: 14px 16px; border-bottom: 1px solid var(--border-color); color: white; font-weight: 700; font-size: 14px; }
+        #chat-body { height: 250px; display: flex; flex-direction: column; }
+        #chat-messages { flex: 1; overflow-y: auto; padding: 12px; color: var(--text-muted); font-size: 12px; display: flex; flex-direction: column; gap: 6px; }
+        #chat-messages b { color: #aaa; }
+        
+        #chat-input-wrapper { display: flex; border-top: 1px solid var(--border-color); }
+        #chat-input { flex: 1; background: transparent; border: none; padding: 12px 16px; color: white; outline: none; font-size: 13px; }
+        #chat-input::placeholder { color: #555; }
+        #chat-send { background: transparent; border: none; color: var(--primary); font-weight: bold; padding: 0 16px; cursor: pointer; font-size: 13px; }
 
-        /* Стили для ЕДИНОГО попапа добавления */
-        .popup-form { min-width: 200px; padding: 5px; color: #333; }
-        .popup-input { width: 100%; margin-bottom: 10px; padding: 8px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; }
-        .photo-preview { width: 100%; border-radius: 8px; display: none; margin-bottom: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
-        .btn-photo { background: #6c757d; color: white; border: none; padding: 8px; width: 100%; border-radius: 6px; margin-bottom: 8px; cursor: pointer; font-size: 13px; }
-        .btn-save { background: #28a745; color: white; border: none; padding: 10px; width: 100%; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 14px; }
+        /* КНОПКИ УПРАВЛЕНИЯ (Снизу) */
+        .controls { position: absolute; bottom: 25px; left: 15px; right: 15px; z-index: 1000; display: flex; gap: 12px; }
+        .btn { flex: 1; border: none; padding: 16px; border-radius: 16px; font-weight: 700; color: white; cursor: pointer; font-size: 14px; text-transform: uppercase; box-shadow: var(--shadow); transition: 0.2s; -webkit-tap-highlight-color: transparent; }
+        .btn:active { transform: translateY(1px); opacity: 0.9; }
+        .btn-blue { background: var(--primary-gradient); }
+        .btn-green { background: var(--green-gradient); }
 
-        /* Фото на карте */
-        .map-img { width: 100%; border-radius: 8px; margin-top: 8px; cursor: zoom-in; max-height: 150px; object-fit: cover; }
-        .del-btn { background: #ff4444; color: white; border: none; padding: 5px 10px; border-radius: 5px; margin-top: 10px; width: 100%; cursor: pointer; font-size: 12px; }
+        /* MODERN ПОПАП ДОБАВЛЕНИЯ (Leaflet) */
+        .leaflet-popup-content-wrapper { background: var(--panel-bg); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur); border-radius: 16px; border: 1px solid var(--border-color); box-shadow: var(--shadow); color: var(--text-main); }
+        .leaflet-popup-tip { background: var(--panel-bg); border-left: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); }
+        .leaflet-popup-content { margin: 16px 20px; font-size: 13px; font-family: -apple-system, sans-serif; }
+        
+        .popup-form { display: flex; flex-direction: column; gap: 10px; min-width: 200px; color: #333; }
+        .popup-input { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; font-size: 13px; color: #333;}
+        .photo-preview { width: 100%; border-radius: 10px; display: none; margin-top: 5px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); max-height: 150px; object-fit: cover;}
+        .btn-photo { background: #333; color: white; border: 1px solid #444; padding: 10px; width: 100%; border-radius: 8px; cursor: pointer; font-size: 13px; }
+        .btn-save { background: var(--green-gradient); color: white; border: none; padding: 12px; width: 100%; border-radius: 10px; font-weight: 700; cursor: pointer; font-size: 14px; text-transform: uppercase; margin-top: 5px;}
 
-        /* Оверлей для большого фото */
-        .full-img-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 2000; display: none; justify-content: center; align-items: center; }
-        .full-img-overlay img { max-width: 95%; max-height: 95%; border-radius: 10px; }
+        /* ОТОБРАЖЕНИЕ МЕТОК И ФОТО */
+        .map-img { width: 100%; border-radius: 10px; margin-top: 8px; cursor: zoom-in; max-height: 150px; object-fit: cover; border: 1px solid var(--border-color); }
+        .popup-text { line-height: 1.4; color: #eee; }
+        .del-btn { background: #ff4444; color: white; border: none; padding: 6px 10px; border-radius: 6px; margin-top: 10px; width: 100%; cursor: pointer; font-size: 11px; font-weight: bold;}
+
+        /* ОВЕРЛЕЙ БОЛЬШОГО ФОТО */
+        .full-img-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 2000; display: none; justify-content: center; align-items: center; -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+        .full-img-overlay img { max-width: 95%; max-height: 95%; border-radius: 12px; box-shadow: var(--shadow); }
     </style>
 </head>
 <body>
 
-    <div id="online-tracker">Онлайн: <span id="online-count">1</span></div>
+    <div id="map"></div>
+
+    <div class="top-floaters">
+        <div id="online-tracker" class="floater-panel">Братск Online: <span id="online-count">1</span></div>
+        <button id="chat-toggle" onclick="toggleChat()">💬 ЧАТ</button>
+    </div>
 
     <div id="chat-window">
-        <div id="chat-header" onclick="toggleChat()">
-            <span>💬 ЧАТ СОБЫТИЙ</span>
-            <span id="toggle-icon">—</span>
-        </div>
+        <div id="chat-header">События</div>
         <div id="chat-body">
             <div id="chat-messages"></div>
+            <div id="chat-input-wrapper">
+                <input type="text" id="chat-input" placeholder="Напиши что-нибудь...">
+                <button id="chat-send">ОТПРАВИТЬ</button>
+            </div>
         </div>
     </div>
 
-    <div id="map"></div>
-
     <div class="controls">
-        <button class="btn btn-blue" onclick="getLocation()">📍 ГДЕ Я?</button>
+        <button class="btn btn-blue" onclick="getLocation()">📍 ГДЕ Я? (🚙)</button>
         <button class="btn btn-green" onclick="addAtUserCoords()">🚔 МЕТКА ТУТ</button>
     </div>
 
@@ -74,11 +112,11 @@
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjeWhmeGFwZWdwb3ViaXhsYXlwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQwMDMxMjAsImV4cCI6MjA4OTU3OTEyMH0.HkJ5Y0SPBjiCcg8eErtCWhHYIwlA4HV9TrfTRxpHIh0'; 
         const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        if (!localStorage.getItem('my_uid')) localStorage.setItem('my_uid', 'u' + Date.now() + Math.random().toString(36).substr(2, 5));
+        if (!localStorage.getItem('my_uid')) localStorage.setItem('my_uid', 'u' + Date.now() + Math.random().toString(36).substr(2, 4));
         const myUid = localStorage.getItem('my_uid');
 
-        const dpsIcon = L.divIcon({ html: '🚔', className: '', iconSize: [30, 30], iconAnchor: [15, 15] });
-        const myCarIcon = L.divIcon({ html: '🚙', className: '', iconSize: [36, 36], iconAnchor: [18, 18] });
+        const dpsIcon = L.divIcon({ html: '🚔', className: '', iconSize: [32, 32], iconAnchor: [16, 16] });
+        const myCarIcon = L.divIcon({ html: '🚙', className: '', iconSize: [38, 38], iconAnchor: [19, 19] });
 
         var map = L.map('map', { zoomControl: false }).setView([56.13, 101.60], 12);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
@@ -86,27 +124,46 @@
         var userMarker, userCoords;
         var markersLayer = L.layerGroup().addTo(map);
 
-        // Интерфейс
+        // --- ЛОГИКА ЧАТА ---
         function toggleChat() {
-            document.getElementById('chat-window').classList.toggle('minimized');
-            document.getElementById('toggle-icon').innerText = document.getElementById('chat-window').classList.contains('minimized') ? '+' : '—';
+            document.getElementById('chat-window').classList.toggle('open');
         }
-        function appendMsg(txt) {
+        
+        function appendMsg(txt, username = 'Водитель') {
             const box = document.getElementById('chat-messages');
-            box.innerHTML += `<div><b>Событие:</b> ${txt}</div>`;
+            box.innerHTML += `<div><b>${username}:</b> ${txt}</div>`;
             box.scrollTop = box.scrollHeight;
         }
 
-        // Рендер метки
+        // Отправка сообщений
+        async function sendMessage() {
+            const input = document.getElementById('chat-input');
+            const val = input.value;
+            if (!val) return;
+
+            // Админ коды
+            if (val === 'Cleanchat') {
+                await supabaseClient.from('messages').delete().neq('id', 0);
+            } else if (val === 'Cleanmarker') {
+                await supabaseClient.from('markers').delete().neq('id', 0);
+            } else {
+                await supabaseClient.from('messages').insert([{ text: val }]);
+            }
+            input.value = '';
+        }
+        document.getElementById('chat-send').onclick = sendMessage;
+        document.getElementById('chat-input').onkeypress = (e) => { if (e.key === 'Enter') sendMessage(); };
+
+
+        // --- РЕНДЕР МЕТОК ---
         function renderMarker(m) {
-            let html = `<div><b>${m.content}</b>`;
+            let html = `<div class="popup-text"><b>${m.content}</b></div>`;
             if (m.image_url) html += `<img src="${m.image_url}" class="map-img" onclick="showFullImg('${m.image_url}')">`;
-            if (m.user_id === myUid) html += `<button class="del-btn" onclick="deleteMarker(${m.id})">Удалить</button>`;
-            html += `</div>`;
+            if (m.user_id === myUid) html += `<button class="del-btn" onclick="deleteMarker(${m.id})">Удалить мою метку</button>`;
             L.marker([m.lat, m.lng], {icon: dpsIcon}).addTo(markersLayer).bindPopup(html);
         }
 
-        // --- ЛОГИКА ЕДИНОГО ОКНА ДОБАВЛЕНИЯ ---
+        // --- ЕДИНОЕ ОКНО ДОБАВЛЕНИЯ ---
         function createAddFormPopup(latlng) {
             const container = document.createElement('div');
             container.className = 'popup-form';
@@ -114,7 +171,7 @@
                 <input type="text" id="pop-text" class="popup-input" placeholder="Что тут происходит?">
                 <img id="pop-preview" class="photo-preview">
                 <button id="pop-photo-btn" class="btn-photo">📷 Добавить фото</button>
-                <button id="pop-save-btn" class="btn-save">СОХРАНИТЬ</button>
+                <button id="pop-save-btn" class="btn-save">Опубликовать</button>
             `;
 
             let currentImageUrl = null;
@@ -127,7 +184,7 @@
                     const file = input.files[0];
                     if (file) {
                         const fname = 'img_' + Date.now() + '.jpg';
-                        container.querySelector('#pop-photo-btn').innerText = "Загрузка...";
+                        container.querySelector('#pop-photo-btn').innerText = "Загрузка фото...";
                         const { data } = await supabaseClient.storage.from('images').upload(fname, file);
                         if (data) {
                             currentImageUrl = `${SUPABASE_URL}/storage/v1/object/public/images/${fname}`;
@@ -140,16 +197,19 @@
                 input.click();
             };
 
-            // Логика кнопки Сохранить
+            // Логика кнопки Опубликовать
             container.querySelector('#pop-save-btn').onclick = async () => {
                 const text = container.querySelector('#pop-text').value;
                 if (!text) return alert("Введите текст!");
                 container.querySelector('#pop-save-btn').innerText = "Сохранение...";
                 
+                // 1. Сохраняем в базу
                 await supabaseClient.from('markers').insert([{
                     lat: latlng.lat, lng: latlng.lng, content: text, image_url: currentImageUrl, user_id: myUid
                 }]);
-                await supabaseClient.from('messages').insert([{ text: "🚔 " + text }]);
+                // 2. Дублируем в чат
+                await supabaseClient.from('messages').insert([{ text: "🚔 " + text, username: 'ДПС Бот' }]);
+                
                 map.closePopup();
             };
 
@@ -157,19 +217,13 @@
         }
 
         // --- ОБРАБОТЧИКИ НАЖАТИЙ ---
-        
-        // Клик по карте (Исправленный!)
-        map.on('click', function(e) {
-            createAddFormPopup(e.latlng);
-        });
+        map.on('click', (e) => createAddFormPopup(e.latlng));
 
-        // Кнопка "Метка тут" (по GPS)
         function addAtUserCoords() {
-            if (!userCoords) return alert("Сначала нажми 'ГДЕ Я?', чтобы поймать GPS");
+            if (!userCoords) return alert("Сначала нажми 'ГДЕ Я?'");
             createAddFormPopup(userCoords);
         }
 
-        // Вспомогательные функции
         window.showFullImg = (url) => {
             document.getElementById('full-img').src = url;
             document.getElementById('img-overlay').style.display = 'flex';
@@ -183,31 +237,35 @@
         map.on('locationfound', e => {
             userCoords = e.latlng;
             if (userMarker) userMarker.setLatLng(e.latlng);
-            else userMarker = L.marker(e.latlng, {icon: myCarIcon}).addTo(map).bindPopup("Я тут 🚙");
+            else userMarker = L.marker(e.latlng, {icon: myCarIcon}).addTo(map).bindPopup("Я тут 🚙").openPopup();
         });
 
         // --- REALTIME ---
-        supabaseClient.channel('db').on('postgres_changes', { event: '*', schema: 'public', table: 'markers' }, (p) => {
+        supabaseClient.channel('realtime').on('postgres_changes', { event: '*', schema: 'public', table: 'markers' }, (p) => {
             if (p.eventType === 'INSERT') renderMarker(p.new);
-            if (p.eventType === 'DELETE') { markersLayer.clearLayers(); refreshMarkers(); }
-        }).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (p) => {
-            appendMsg(p.new.text);
+            if (p.eventType === 'DELETE') { markersLayer.clearLayers(); startLoad(); }
+        }).on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, (p) => {
+            if (p.eventType === 'INSERT') appendMsg(p.new.text, p.new.username);
+            if (p.eventType === 'DELETE') { document.getElementById('chat-messages').innerHTML = '<i>Чат очищен.</i>'; }
         }).subscribe();
 
-        // Онлайн
-        const pres = supabaseClient.channel('online');
+        // Онлайн трекер
+        const pres = supabaseClient.channel('online_presence');
         pres.on('presence', { event: 'sync' }, () => {
             document.getElementById('online-count').innerText = Object.keys(pres.presenceState()).length;
         }).subscribe(async (s) => { if (s === 'SUBSCRIBED') await pres.track({ online: true }); });
 
-        // Старт
-        async function refreshMarkers() {
+        // Первоначальная загрузка
+        async function startLoad() {
+            // Метки
             const { data: mrks } = await supabaseClient.from('markers').select('*');
             if (mrks) mrks.forEach(renderMarker);
-            const { data: msgs } = await supabaseClient.from('messages').select('*').order('created_at', {ascending: false}).limit(10);
-            if (msgs) msgs.reverse().forEach(m => appendMsg(m.text));
+            
+            // История чата
+            const { data: msgs } = await supabaseClient.from('messages').select('*').order('created_at', {ascending: false}).limit(15);
+            if (msgs) msgs.reverse().forEach(m => appendMsg(m.text, m.username));
         }
-        refreshMarkers();
+        startLoad();
     </script>
 </body>
 </html>
