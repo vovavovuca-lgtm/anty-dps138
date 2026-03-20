@@ -1,76 +1,25 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html>
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Народная Карта</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Тест</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; background: #000; }
-        #map { height: 100vh; width: 100vw; }
-        .add-btn {
-            position: absolute; bottom: 30px; left: 50%;
-            transform: translateX(-50%); z-index: 1000;
-            background: #0088cc; color: white; padding: 15px 25px;
-            border-radius: 50px; border: none; font-family: sans-serif;
-            font-weight: bold; box-shadow: 0 4px 15px rgba(0,0,0,0.5);
-        }
-        .leaflet-control-attribution { display: none !important; }
+        body, html, #map { margin: 0; padding: 0; height: 100vh; width: 100vw; background: red; }
     </style>
 </head>
 <body>
-
     <div id="map"></div>
-    <button class="add-btn" onclick="getLocation()">📍 Найти меня</button>
-
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    
     <script>
-        // Твои ключи для подключения
-        const SUPABASE_URL = 'https://ucyhfxapegpoubixlayp.supabase.co';
-        const SUPABASE_KEY = 'Sb_publishable_Xi18e175-410DrW0Ayikzw_feKSQde7';
-        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-        // Инициализация карты
-        var map = L.map('map', { zoomControl: false }).setView([55.75, 37.61], 13);
-        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}').addTo(map);
-
-        // 1. Загружаем старые метки из базы при старте
-        async function loadMarkers() {
-            const { data, error } = await supabase.from('markers').select('*');
-            if (data) {
-                data.forEach(m => {
-                    L.marker([m.lat, m.lng]).addTo(map).bindPopup(m.content);
-                });
-            }
+        try {
+            var map = L.map('map').setView([55.75, 37.61], 13);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+            alert("Карта загружена!");
+        } catch (e) {
+            alert("Ошибка: " + e.message);
         }
-        loadMarkers();
-
-        // 2. Функция GPS
-        function getLocation() {
-            map.locate({setView: true, maxZoom: 16});
-        }
-
-        map.on('locationfound', function(e) {
-            L.circle(e.latlng, {radius: 10}).addTo(map).bindPopup("Ты тут").openPopup();
-        });
-
-        // 3. Сохранение новой метки
-        map.on('click', async function(e) {
-            var text = prompt("Что здесь находится?");
-            if (text) {
-                // Сначала ставим на карту визуально
-                L.marker(e.latlng).addTo(map).bindPopup(text).openPopup();
-                
-                // Отправляем в базу данных Supabase
-                const { error } = await supabase.from('markers').insert([
-                    { lat: e.latlng.lat, lng: e.latlng.lng, content: text }
-                ]);
-                
-                if (error) console.error('Ошибка сохранения:', error);
-            }
-        });
     </script>
 </body>
 </html>
