@@ -3,12 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Локатор Братск</title>
+    <title>Карта Братска</title>
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; background: #1a1a1a; font-family: sans-serif; }
-        #map { height: 100vh; width: 100vw; }
+        body, html { margin: 0; padding: 0; height: 100%; background: #f0f0f0; font-family: sans-serif; }
+        #map { height: 100vh; width: 100vw; z-index: 1; }
         
         /* Кнопка GPS */
         .add-btn {
@@ -16,18 +17,20 @@
             transform: translateX(-50%); z-index: 1000;
             background: #0088cc; color: white; padding: 15px 25px;
             border-radius: 50px; border: none; font-weight: bold;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            cursor: pointer;
         }
         
-        /* Стиль всплывающего окна с фото */
+        /* Картинка внутри метки */
         .popup-img {
             width: 100%;
-            max-width: 250px;
+            max-width: 200px;
             border-radius: 8px;
-            margin-top: 10px;
+            margin-top: 8px;
             display: block;
         }
-        .leaflet-popup-content-wrapper { border-radius: 12px; background: #fff; }
+        
+        .leaflet-popup-content { min-width: 150px; }
     </style>
 </head>
 <body>
@@ -39,91 +42,104 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     
     <script>
-        // --- НАСТРОЙКИ ПОДКЛЮЧЕНИЯ ---
-        const SUPABASE_URL = '
-https://ucyhfxapegpoubixlayp.supabase.co'; 
-        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjeWhmeGFwZWdwb3ViaXhsYXlwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQwMDMxMjAsImV4cCI6MjA4OTU3OTEyMH0.HkJ5Y0SPBjiCcg8eErtCWhHYIwlA4HV9TrfTRxpHIh0
-'; 
-        
+        // --- 1. ТВОИ ДАННЫЕ (ЗАМЕНИ ИХ) ---
+        const SUPABASE_URL = 'https://ucyhfxapegpoubixlayp.supabase.co'; 
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjeWhmeGFwZWdwb3ViaXhsYXlwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQwMDMxMjAsImV4cCI6MjA4OTU3OTEyMH0.HkJ5Y0SPBjiCcg8eErtCWhHYIwlA4HV9TrfTRxpHIh0'; 
+
         const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        // --- ИНИЦИАЛИЗАЦИЯ КАРТЫ ---
-        // Установим центр на Братск
+        // --- 2. НАСТРОЙКА КАРТЫ ---
+        // Центрируем на Братск (примерные координаты)
         var map = L.map('map', { zoomControl: false }).setView([56.13, 101.60], 12);
         
-        // Слой спутниковой карты (ArcGIS)
-        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}').addTo(map);
+        // Стандартный слой карт (OpenStreetMap) - работает всегда
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19
+        }).addTo(map);
 
-        // --- ЗАГРУЗКА МЕТОК ИЗ БАЗЫ ---
+        // --- 3. ЗАГРУЗКА МЕТОК ---
         async function loadMarkers() {
-            const { data, error } = await supabaseClient.from('markers').select('*');
-            if (data) {
-                data.forEach(m => {
-                    let popupContent = `<b>${m.content}</b>`;
-                    if (m.image_url) {
-                        popupContent += `<br><img src="${m.image_url}" class="popup-img">`;
-                    }
-                    L.marker([m.lat, m.lng]).addTo(map).bindPopup(popupContent);
-                });
+            try {
+                const { data, error } = await supabaseClient.from('markers').select('*');
+                if (error) throw error;
+                
+                if (data) {
+                    data.forEach(m => {
+                        let content = `<b>${m.content}</b>`;
+                        if (m.image_url) {
+                            content += `<br><img src="${m.image_url}" class="popup-img">`;
+                        }
+                        L.marker([m.lat, m.lng]).addTo(map).bindPopup(content);
+                    });
+                }
+            } catch (err) {
+                console.error("Ошибка загрузки:", err.message);
             }
         }
         loadMarkers();
 
-        // --- ДОБАВЛЕНИЕ НОВОЙ МЕТКИ ПРИ КЛИКЕ ---
+        // --- 4. ДОБАВЛЕНИЕ НОВОЙ МЕТКИ С ФОТО ---
         map.on('click', async function(e) {
-            // Создаем скрытый выбор файла для камеры
             const input = document.createElement('input');
             input.type = 'file';
-            input.accept = 'image/*'; 
+            input.accept = 'image/*'; // Открывает камеру на телефоне
             
             input.onchange = async () => {
                 const file = input.files[0];
-                const text = prompt("Что здесь происходит? (ДПС, Яма, ДТП)");
-                
-                if (file && text) {
-                    const fileName = 'img_' + Date.now() + '.jpg';
-                    
-                    // 1. Загружаем фото в Storage (корзина 'images')
-                    const { data: imgData, error: imgErr } = await supabaseClient.storage
+                if (!file) return;
+
+                const text = prompt("Что тут? (Например: Экипаж ДПС, ДТП, Ремонт)");
+                if (!text) return;
+
+                // Показываем индикатор загрузки (простой алерт)
+                console.log("Загрузка...");
+
+                try {
+                    // А) Загружаем фото в Storage
+                    const fileName = `img_${Date.now()}.jpg`;
+                    const { data: uploadData, error: uploadError } = await supabaseClient.storage
                         .from('images')
                         .upload(fileName, file);
 
-                    if (imgErr) return alert("Ошибка загрузки фото: " + imgErr.message);
+                    if (uploadError) throw uploadError;
 
-                    // Ссылка на фото
+                    // Б) Получаем ссылку
                     const imgUrl = `${SUPABASE_URL}/storage/v1/object/public/images/${fileName}`;
 
-                    // 2. Сохраняем данные в таблицу 'markers'
-                    const { error: dbErr } = await supabaseClient.from('markers').insert([{ 
-                        lat: e.latlng.lat, 
-                        lng: e.latlng.lng, 
+                    // В) Записываем в таблицу markers
+                    const { error: dbError } = await supabaseClient.from('markers').insert([{
+                        lat: e.latlng.lat,
+                        lng: e.latlng.lng,
                         content: text,
-                        image_url: imgUrl 
+                        image_url: imgUrl
                     }]);
 
-                    if (dbErr) return alert("Ошибка базы данных: " + dbErr.message);
+                    if (dbError) throw dbError;
 
-                    // 3. Ставим метку на карту
+                    // Г) Ставим метку на карту сразу
                     L.marker(e.latlng).addTo(map).bindPopup(`<b>${text}</b><br><img src="${imgUrl}" class="popup-img">`).openPopup();
+
+                } catch (err) {
+                    alert("Ошибка: " + err.message);
                 }
             };
-            input.click(); // Открываем камеру/галерею
+            input.click();
         });
 
-        // --- ГЕОЛОКАЦИЯ ---
+        // --- 5. ГЕОЛОКАЦИЯ ---
         function getLocation() {
             map.locate({setView: true, maxZoom: 16});
         }
 
         map.on('locationfound', function(e) {
-            L.circle(e.latlng, {radius: 15, color: 'cyan'}).addTo(map).bindPopup("Ты здесь").openPopup();
+            L.circle(e.latlng, {radius: 20, color: '#0088cc'}).addTo(map).bindPopup("Ты здесь").openPopup();
         });
 
         map.on('locationerror', function() {
-            alert("Не удалось определить местоположение. Проверь GPS.");
+            alert("Включи GPS на телефоне");
         });
-
     </script>
 </body>
 </html>
+
 
