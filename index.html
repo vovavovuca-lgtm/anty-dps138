@@ -1,216 +1,218 @@
 <!DOCTYPE html>
-<html lang="ru" style="margin:0;padding:0;height:100%;width:100%;">
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <title>BRATSK MONITOR v14</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>BRATSK DRIVE PRO</title>
     
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <style>
-        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-        html, body { 
-            margin: 0; padding: 0; width: 100%; height: 100%; 
-            background: #000; overflow: hidden; position: fixed;
-            font-family: -apple-system, system-ui, sans-serif;
-        }
+        :root { --accent: #007AFF; --danger: #FF3B30; --bg: #0A0A0A; --panel: rgba(25, 25, 27, 0.95); }
+        
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-user-select: none; }
+        body, html { width: 100%; height: 100%; background: #000; overflow: hidden; font-family: -apple-system, system-ui, sans-serif; }
 
-        /* Карта на весь экран без зазоров */
-        #map { 
-            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-            width: 100vw; height: 100vh; background: #111; z-index: 1;
-        }
+        /* Контейнер карты */
+        #map-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+        #map { width: 100%; height: 100%; background: #111; }
 
-        /* Интерфейс поверх карты */
-        .ui { position: absolute; z-index: 1000; pointer-events: none; width: 100%; }
-        .ui-bottom { bottom: 30px; padding: 0 15px; display: flex; gap: 10px; }
-        .ui-top { top: 15px; left: 15px; }
+        /* Слой интерфейса */
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; }
+        .safe-area { position: relative; width: 100%; height: 100%; padding: env(safe-area-inset-top) 15px env(safe-area-inset-bottom); display: flex; flex-direction: column; justify-content: space-between; }
 
-        .widget { 
-            background: rgba(25, 25, 25, 0.9); border: 1px solid rgba(255,255,255,0.1); 
-            border-radius: 15px; color: white; pointer-events: auto;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.6);
-        }
+        /* Элементы */
+        .glass { background: var(--panel); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.1); border-radius: 20px; color: #fff; pointer-events: auto; }
+        .status-badge { align-self: flex-start; margin-top: 10px; padding: 8px 15px; font-size: 11px; font-weight: 800; color: #30D158; text-transform: uppercase; }
+        .controls-row { display: flex; gap: 10px; margin-bottom: 20px; }
+        
+        .action-btn { flex: 1; height: 60px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase; border: none; cursor: pointer; }
+        .btn-main { background: var(--accent); color: #fff; border-radius: 18px; box-shadow: 0 10px 20px rgba(0,122,255,0.3); }
 
-        .btn { 
-            flex: 1; border: none; padding: 18px 5px; font-weight: 800; font-size: 11px;
-            text-transform: uppercase; cursor: pointer; color: white;
-        }
-        .btn-blue { background: #007aff; border-radius: 15px; }
+        /* Полноэкранный чат */
+        #chat-view { position: fixed; top: 100%; left: 0; width: 100%; height: 100%; background: var(--bg); z-index: 100; transition: transform 0.3s cubic-bezier(0.19, 1, 0.22, 1); pointer-events: auto; }
+        #chat-view.open { transform: translateY(-100%); }
+        .chat-header { height: 70px; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; border-bottom: 1px solid #222; }
+        #chat-stream { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; }
+        .chat-input-box { height: 90px; padding: 15px; background: #111; display: flex; gap: 10px; }
+        .msg-input { flex: 1; background: #222; border: none; border-radius: 15px; padding: 0 20px; color: #fff; font-size: 16px; outline: none; }
 
-        /* Чат */
-        #chat { 
-            position: fixed; top: 0; left: 100%; width: 100%; height: 100%; 
-            background: #0f0f0f; z-index: 2000; transition: 0.3s ease-out;
-            display: flex; flex-direction: column; 
-        }
-        #chat.active { left: 0; }
-        .chat-h { padding: 20px; border-bottom: 1px solid #222; display: flex; justify-content: space-between; align-items: center; }
-        #chat-m { flex: 1; overflow-y: auto; padding: 15px; font-size: 14px; }
-        .chat-f { padding: 15px; display: flex; gap: 10px; background: #151515; padding-bottom: 40px; }
-        input { flex: 1; background: #252525; border: 1px solid #333; padding: 12px; border-radius: 10px; color: white; outline: none; }
-
-        /* Метки */
-        .leaflet-popup-content-wrapper { background: #1a1a1a; color: white; border-radius: 12px; }
-        .pop-card { display: flex; flex-direction: column; gap: 8px; min-width: 160px; padding: 5px; }
-        .pop-img { width: 100%; border-radius: 8px; border: 1px solid #333; }
+        /* Карта: Попапы */
+        .leaflet-popup-content-wrapper { background: #1c1c1e !important; color: white !important; border-radius: 20px !important; padding: 5px; }
+        .leaflet-popup-tip { background: #1c1c1e !important; }
+        .marker-form { display: flex; flex-direction: column; gap: 10px; min-width: 180px; padding: 5px; }
+        .form-input { background: #2c2c2e; border: 1px solid #3a3a3c; border-radius: 10px; padding: 10px; color: #fff; }
+        .img-preview { width: 100%; border-radius: 12px; border: 1px solid #333; margin-top: 5px; display: block; }
     </style>
 </head>
 <body>
 
-    <div id="map"></div>
+    <div id="map-container">
+        <div id="map"></div>
+    </div>
 
-    <div class="ui ui-top">
-        <div class="widget" style="padding: 7px 15px; font-size: 11px; color: #32d74b; font-weight: 900;">
-            ● LIVE: <span id="count">1</span>
+    <div id="ui-layer">
+        <div class="safe-area">
+            <div class="glass status-badge">● LIVE: <span id="online-count">1</span></div>
+            
+            <div class="controls-row">
+                <div class="glass action-btn" onclick="toggleChat(true)">Сообщения</div>
+                <div class="glass action-btn" onclick="requestGPS()">Локация</div>
+                <div class="action-btn btn-main" onclick="quickMark()">+ Пост ДПС</div>
+            </div>
         </div>
     </div>
 
-    <div class="ui ui-bottom">
-        <button class="widget btn" onclick="showChat(true)">ЧАТ</button>
-        <button class="widget btn" onclick="goGPS()">ГДЕ Я?</button>
-        <button class="widget btn btn-blue" onclick="makeMark()">МЕТКА</button>
-    </div>
-
-    <div id="chat">
-        <div class="chat-h">
-            <b style="color:white; font-size:18px">СОБЫТИЯ</b>
-            <button class="widget btn" style="flex:none; padding:10px 20px" onclick="showChat(false)">ЗАКРЫТЬ</button>
+    <div id="chat-view" class="glass">
+        <div class="chat-header">
+            <span style="font-weight: 800; font-size: 18px;">ЭФИР</span>
+            <div class="glass" style="padding: 10px 20px; font-size: 12px;" onclick="toggleChat(false)">ЗАКРЫТЬ</div>
         </div>
-        <div id="chat-m"></div>
-        <div class="chat-f">
-            <input type="text" id="chat-i" placeholder="Напиши что-нибудь...">
-            <button class="btn-blue btn" style="flex:none; width:55px" onclick="doSend()">></button>
+        <div id="chat-stream"></div>
+        <div class="chat-input-box">
+            <input type="text" id="chat-input" class="msg-input" placeholder="Где стоят?">
+            <div class="btn-main action-btn" style="flex: 0 0 60px; border-radius: 15px;" onclick="postMessage()">→</div>
         </div>
     </div>
 
     <script>
-        // 1. ПОДКЛЮЧЕНИЕ БАЗЫ
-        const URL = 'https://ucyhfxapegpoubixlayp.supabase.co';
-        const KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjeWhmeGFwZWdwb3ViaXhsYXlwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQwMDMxMjAsImV4cCI6MjA4OTU3OTEyMH0.HkJ5Y0SPBjiCcg8eErtCWhHYIwlA4HV9TrfTRxpHIh0';
-        const db = window.supabase.createClient(URL, KEY);
-        const myID = localStorage.getItem('u_id_v14') || 'user_' + Math.random().toString(36).substr(2, 5);
-        localStorage.setItem('u_id_v14', myID);
+        // --- CORE CONFIG ---
+        const CONFIG = {
+            URL: 'https://ucyhfxapegpoubixlayp.supabase.co',
+            KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVjeWhmeGFwZWdwb3ViaXhsYXlwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQwMDMxMjAsImV4cCI6MjA4OTU3OTEyMH0.HkJ5Y0SPBjiCcg8eErtCWhHYIwlA4HV9TrfTRxpHIh0',
+            ID: localStorage.getItem('app_uid_v15') || 'u_' + Math.random().toString(36).substr(2, 5)
+        };
+        localStorage.setItem('app_uid_v15', CONFIG.ID);
 
-        let map, markers, myPos = null, meMark = null;
+        const supabase = window.supabase.createClient(CONFIG.URL, CONFIG.KEY);
+        let map, markersLayer, userPos = null, userMarker = null;
 
-        // 2. ЗАПУСК КАРТЫ (С ФИКСОМ СЕРОГО ЭКРАНА)
-        function start() {
-            map = L.map('map', { zoomControl: false, attributionControl: false }).setView([56.13, 101.60], 12);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-            markers = L.layerGroup().addTo(map);
+        // --- MAP ENGINE ---
+        function boot() {
+            map = L.map('map', { zoomControl: false, attributionControl: false, fadeAnimation: true }).setView([56.13, 101.60], 13);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+            markersLayer = L.layerGroup().addTo(map);
 
-            // Тот самый "пинок" для карты
-            const fixer = setInterval(() => {
-                map.invalidateSize();
-                if (document.querySelector('.leaflet-tile-loaded')) clearInterval(fixer);
-            }, 400);
+            // Force Render Cycle
+            const force = () => { map.invalidateSize(); if(!document.querySelector('.leaflet-tile-loaded')) setTimeout(force, 500); };
+            force();
 
-            map.on('click', e => openForm(e.latlng));
-            sync();
-            realtime();
+            map.on('click', e => openMarkerForm(e.latlng));
+            loadData();
+            initRealtime();
         }
 
-        // 3. ФУНКЦИИ
-        function showChat(s) { document.getElementById('chat').classList.toggle('active', s); }
+        // --- LOGIC ---
+        function toggleChat(open) { document.getElementById('chat-view').classList.toggle('open', open); }
 
-        async function doSend() {
-            const i = document.getElementById('chat-i');
-            if (!i.value.trim()) return;
-            await db.from('messages').insert([{ text: i.value.trim() }]);
-            i.value = '';
+        async function postMessage() {
+            const el = document.getElementById('chat-input');
+            if(!el.value.trim()) return;
+            await supabase.from('messages').insert([{ text: el.value.trim() }]);
+            el.value = '';
         }
 
-        function draw(m) {
-            let h = `<div class="pop-card"><b>${m.content}</b>`;
-            if (m.image_url) h += `<img src="${m.image_url}" class="pop-img" onclick="window.open('${m.image_url}')">`;
-            if (m.user_id === myID) h += `<button onclick="kill(${m.id})" style="border:none;background:none;color:red;font-size:10px;cursor:pointer">Удалить</button>`;
-            h += `</div>`;
-            L.marker([m.lat, m.lng], { icon: L.divIcon({html:'🚔', className:'', iconSize:[30,30]}) }).addTo(markers).bindPopup(h);
+        function createMarker(m) {
+            let content = `<div class="marker-form"><b style="color:#fff; font-size:16px">${m.content}</b>`;
+            if(m.image_url) content += `<img src="${m.image_url}" class="img-preview" onclick="window.open('${m.image_url}')">`;
+            if(m.user_id === CONFIG.ID) content += `<div onclick="deleteEntry(${m.id})" style="color:var(--danger); font-size:11px; padding:5px; text-align:center; font-weight:bold;">УДАЛИТЬ</div>`;
+            content += `</div>`;
+
+            const icon = L.divIcon({ html: '🚔', className: '', iconSize: [32, 32], iconAnchor: [16, 16] });
+            L.marker([m.lat, m.lng], { icon }).addTo(markersLayer).bindPopup(content);
         }
 
-        function openForm(ll) {
-            const d = document.createElement('div');
-            d.className = 'pop-card';
-            d.innerHTML = `
-                <input id="f-t" placeholder="Что видим?" style="padding:10px; border-radius:8px; border:1px solid #444; background:#222; color:white">
-                <button id="f-c" class="widget btn" style="padding:10px; font-size:10px">ФОТО</button>
-                <button id="f-s" class="btn btn-blue" style="padding:10px">ОК</button>
+        function openMarkerForm(ll) {
+            const form = document.createElement('div');
+            form.className = 'marker-form';
+            form.innerHTML = `
+                <input id="f-text" class="form-input" placeholder="Описание (ДПС, Яма...)">
+                <div id="f-photo" class="glass" style="padding:12px; text-align:center; font-size:11px; font-weight:bold;">📷 ФОТО (ОПЦИОНАЛЬНО)</div>
+                <div id="f-send" class="btn-main action-btn" style="height:45px; border-radius:12px;">ОПУБЛИКОВАТЬ</div>
             `;
 
-            let img = null;
-            d.querySelector('#f-c').onclick = () => {
-                const f = document.createElement('input'); f.type = 'file'; f.accept = 'image/*';
-                f.onchange = async () => {
-                    if (!f.files[0]) return;
-                    d.querySelector('#f-c').innerText = '...';
-                    const name = Date.now() + '.jpg';
-                    const { data } = await db.storage.from('images').upload(name, f.files[0]);
-                    if (data) {
-                        img = `${URL}/storage/v1/object/public/images/${name}`;
-                        d.querySelector('#f-c').innerText = 'ЕСТЬ';
+            let photoUrl = null;
+            form.querySelector('#f-photo').onclick = () => {
+                const input = document.createElement('input'); input.type = 'file'; input.accept = 'image/*';
+                input.onchange = async () => {
+                    if(!input.files[0]) return;
+                    form.querySelector('#f-photo').innerText = 'ЗАГРУЗКА...';
+                    const path = `${Date.now()}.jpg`;
+                    const { data } = await supabase.storage.from('images').upload(path, input.files[0]);
+                    if(data) {
+                        photoUrl = `${CONFIG.URL}/storage/v1/object/public/images/${path}`;
+                        form.querySelector('#f-photo').innerText = '✅ ГОТОВО';
+                        form.querySelector('#f-photo').style.color = '#30D158';
                     }
                 };
-                f.click();
+                input.click();
             };
 
-            d.querySelector('#f-s').onclick = async () => {
-                const t = d.querySelector('#f-t').value;
-                if (!t) return;
-                draw({ lat: ll.lat, lng: ll.lng, content: t, image_url: img, user_id: myID, id: Date.now() });
+            form.querySelector('#f-send').onclick = async () => {
+                const text = form.querySelector('#f-text').value;
+                if(!text) return;
+                createMarker({ lat: ll.lat, lng: ll.lng, content: text, image_url: photoUrl, user_id: CONFIG.ID, id: Date.now() });
                 map.closePopup();
-                await db.from('markers').insert([{ lat: ll.lat, lng: ll.lng, content: t, image_url: img, user_id: myID }]);
+                await supabase.from('markers').insert([{ lat: ll.lat, lng: ll.lng, content: text, image_url: photoUrl, user_id: CONFIG.ID }]);
             };
-            L.popup().setLatLng(ll).setContent(d).openOn(map);
+            L.popup().setLatLng(ll).setContent(form).openOn(map);
         }
 
-        function goGPS() { map.locate({ setView: true, maxZoom: 15 }); }
+        // GPS
+        function requestGPS() { map.locate({ setView: true, maxZoom: 16 }); }
         map.on('locationfound', e => {
-            myPos = e.latlng;
-            if (meMark) meMark.setLatLng(e.latlng);
-            else meMark = L.marker(e.latlng, { icon: L.divIcon({html:'🚙', className:'', iconSize:[35,35]}) }).addTo(map);
+            userPos = e.latlng;
+            if(userMarker) userMarker.setLatLng(e.latlng);
+            else userMarker = L.marker(e.latlng, { icon: L.divIcon({ html: '🚙', iconSize: [36, 36], iconAnchor: [18, 18] }) }).addTo(map);
         });
+        function quickMark() { if(userPos) openMarkerForm(userPos); else alert("Сначала нажми 'Локация'"); }
 
-        function makeMark() { if (myPos) openForm(myPos); else alert('Жми ГДЕ Я?'); }
-
-        window.kill = async (id) => {
-            await db.from('markers').delete().eq('id', id);
-            markers.clearLayers();
-            sync();
+        window.deleteEntry = async (id) => {
+            await supabase.from('markers').delete().eq('id', id);
+            markersLayer.clearLayers();
+            loadData();
         };
 
-        // 4. ДАННЫЕ
-        async function sync() {
-            const { data: m } = await db.from('markers').select('*');
-            if (m) m.forEach(draw);
-            const { data: g } = await db.from('messages').select('*').order('created_at',{ascending:false}).limit(15);
-            if (g) {
-                const f = document.getElementById('chat-m');
-                f.innerHTML = '';
-                g.reverse().forEach(x => { f.innerHTML += `<div style="margin-bottom:10px; color:#fff"><b>Водитель:</b> ${x.text}</div>`; });
-                f.scrollTop = f.scrollHeight;
+        // --- DATA HUB ---
+        async function loadData() {
+            const { data: m } = await supabase.from('markers').select('*');
+            if(m) m.forEach(createMarker);
+            const { data: msg } = await supabase.from('messages').select('*').order('created_at', { ascending: false }).limit(20);
+            if(msg) {
+                const stream = document.getElementById('chat-stream');
+                stream.innerHTML = '';
+                msg.reverse().forEach(s => {
+                    stream.innerHTML += `<div style="background:#1c1c1e; padding:15px; border-radius:15px;">
+                        <b style="color:var(--accent); font-size:12px;">ВОДИТЕЛЬ:</b><br>
+                        <span style="color:#fff; font-size:14px;">${s.text}</span>
+                    </div>`;
+                });
+                stream.scrollTop = stream.scrollHeight;
             }
         }
 
-        function realtime() {
-            db.channel('v14').on('postgres_changes', { event: '*', schema: 'public', table: 'markers' }, p => {
-                if (p.eventType === 'INSERT' && p.new.user_id !== myID) draw(p.new);
-                if (p.eventType === 'DELETE') { markers.clearLayers(); sync(); }
+        function initRealtime() {
+            supabase.channel('main').on('postgres_changes', { event: '*', schema: 'public', table: 'markers' }, p => {
+                if(p.eventType === 'INSERT' && p.new.user_id !== CONFIG.ID) createMarker(p.new);
+                if(p.eventType === 'DELETE') { markersLayer.clearLayers(); loadData(); }
             }).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, p => {
-                const f = document.getElementById('chat-m');
-                f.innerHTML += `<div style="margin-bottom:10px; color:#fff"><b>Водитель:</b> ${p.new.text}</div>`;
-                f.scrollTop = f.scrollHeight;
+                const stream = document.getElementById('chat-stream');
+                stream.innerHTML += `<div style="background:#1c1c1e; padding:15px; border-radius:15px;">
+                    <b style="color:var(--accent); font-size:12px;">ВОДИТЕЛЬ:</b><br>
+                    <span style="color:#fff; font-size:14px;">${p.new.text}</span>
+                </div>`;
+                stream.scrollTop = stream.scrollHeight;
             }).subscribe();
 
-            const p = db.channel('online');
+            const p = supabase.channel('online');
             p.on('presence', { event: 'sync' }, () => {
-                document.getElementById('count').innerText = Object.keys(p.presenceState()).length;
-            }).subscribe(async s => { if (s === 'SUBSCRIBED') await p.track({ online: true }); });
+                document.getElementById('online-count').innerText = Object.keys(p.presenceState()).length;
+            }).subscribe(async s => { if(s === 'SUBSCRIBED') await p.track({ online: true }); });
         }
 
-        window.onload = start;
+        window.onload = boot;
     </script>
 </body>
 </html>
